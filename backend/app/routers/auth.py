@@ -9,6 +9,7 @@ Endpoints:
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from fastapi.security import OAuth2PasswordRequestForm
 
 from app.database.connection import get_db
 from app.models.models import User
@@ -79,23 +80,16 @@ def register(request: UserRegisterRequest, db: Session = Depends(get_db)):
     response_model=TokenResponse,
     summary="Login and get JWT token"
 )
-def login(request: UserLoginRequest, db: Session = Depends(get_db)):
-    """
-    Login with phone + password.
-    Returns a JWT token to use in all future requests.
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
+    phone = form_data.username
+    password = form_data.password
 
-    Flow:
-      1. Find user by phone
-      2. Verify password against stored hash
-      3. Create and return JWT token
+    user = db.query(User).filter(User.phone == phone).first()
 
-    Security note: The error message is intentionally vague.
-    We say "Incorrect phone or password" not "Phone not found" —
-    this prevents attackers from knowing which phones are registered.
-    """
-    user = db.query(User).filter(User.phone == request.phone).first()
-
-    if not user or not verify_password(request.password, user.hashed_password):
+    if not user or not verify_password(password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect phone number or password."
@@ -108,8 +102,11 @@ def login(request: UserLoginRequest, db: Session = Depends(get_db)):
         )
 
     token = create_access_token(user.id)
-    return {"access_token": token, "token_type": "bearer"}
 
+    return {
+        "access_token": token,
+        "token_type": "bearer"
+    }
 
 @router.get(
     "/me",

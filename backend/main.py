@@ -1,81 +1,67 @@
 """
 BahiSaathi — FastAPI Application Entry Point
 
-This file:
-  1. Creates the FastAPI app instance
-  2. Adds CORS middleware (allows your React frontend to call this API)
-  3. Registers all routers (auth, entries, customers, reports)
-  4. Defines the root health-check endpoint
-
 Run with:
   uvicorn main:app --reload
 
-Then open:
-  http://localhost:8000        → health check
-  http://localhost:8000/docs  → Swagger UI (interactive API docs)
+Docs:
+  http://localhost:8000/docs
 """
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
 
-from app.routers import auth
-
-# ── App instance ────────────────────────────────────────────────
+from app.routers import auth, entries, customers, reports
 
 app = FastAPI(
     title="BahiSaathi AI",
     description=(
-        "AI-powered handwritten ledger digitization for Indian kirana stores. "
-        "Upload a photo of your bahi notebook and get structured entries automatically."
+        "AI-powered handwritten ledger digitization for Indian kirana stores.\n\n"
+        "Upload a photo of your bahi notebook → AI extracts entries automatically.\n"
+        "Tracks dues, generates monthly summaries, works in Hindi/Marathi/English."
     ),
-    version="0.1.0",
-    docs_url="/docs",        # Swagger UI
-    redoc_url="/redoc",      # Alternative docs UI
+    version="0.2.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
-# ── CORS middleware ─────────────────────────────────────────────
-#
-# CORS (Cross-Origin Resource Sharing) is a browser security policy.
-# By default, a browser blocks JS from site A calling an API on site B.
-# Adding this middleware tells the browser "it's ok, I allow these origins."
-#
-# In development: allow_origins=["*"] means allow everyone.
-# In production (Module 8): replace "*" with your actual Vercel URL.
-
+# ── CORS ────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # TODO Module 8: replace with ["https://your-app.vercel.app"]
+    allow_origins=["*"],   # Module 8: replace with your Vercel URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ── Register routers ────────────────────────────────────────────
-#
-# Each router is a collection of related endpoints.
-# We add more routers in Module 3 (entries, customers, reports).
+# ── Serve uploaded images as static files ────────────────────────
+# This lets the frontend display ledger photos using a direct URL.
+# Example: http://localhost:8000/uploads/abc123.jpg
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
+# ── Routers ──────────────────────────────────────────────────────
 app.include_router(auth.router)
-
-# Module 3 — uncomment these when you create them:
-# from app.routers import entries, customers, reports
-# app.include_router(entries.router)
-# app.include_router(customers.router)
-# app.include_router(reports.router)
+app.include_router(entries.router)
+app.include_router(customers.router)
+app.include_router(reports.router)
 
 
-# ── Root endpoint ───────────────────────────────────────────────
-
+# ── Health check ─────────────────────────────────────────────────
 @app.get("/", tags=["Health"])
 def health_check():
-    """
-    Health check endpoint.
-    Used by Railway (deployment) to verify the server is running.
-    Also useful to quickly check if your backend is up.
-    """
     return {
         "status": "ok",
-        "app": "BahiSaathi AI",
-        "version": "0.1.0",
-        "docs": "/docs"
+        "app":    "BahiSaathi AI",
+        "version": "0.2.0",
+        "docs":   "/docs",
+        "endpoints": {
+            "auth":      ["/auth/register", "/auth/login", "/auth/me"],
+            "entries":   ["/entries/", "/entries/manual", "/entries/upload-scan"],
+            "customers": ["/customers/"],
+            "reports":   ["/reports/dashboard", "/reports/dues", "/reports/monthly/{year}/{month}"],
+        }
     }
