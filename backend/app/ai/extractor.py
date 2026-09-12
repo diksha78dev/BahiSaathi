@@ -23,7 +23,7 @@ import os
 from datetime import datetime, date
 from typing import List, Optional
 
-import google.generativeai as genai
+from google import genai
 from PIL import Image
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -38,15 +38,9 @@ from app.models.models import (
 from dotenv import load_dotenv
 
 load_dotenv()
-# ── Gemini setup ─────────────────────────────────────────────────
-# Configure runs once at import time.
-# The API key is read from your .env file via python-dotenv (loaded in connection.py)
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-# gemini-1.5-flash: fastest and cheapest multimodal model
-# good enough for ledger extraction — save gemini-1.5-pro for complex cases
-model = genai.GenerativeModel("gemini-2.5-flash")
-
+# ── Gemini client setup ──────────────────────────────────────────
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 # ── Extraction prompt ────────────────────────────────────────────
 #
@@ -152,8 +146,11 @@ def call_gemini(image_path: str) -> str:
 
     # generate_content accepts a list: [text_prompt, image]
     # or [image, text_prompt] — order doesn't matter for Gemini
-    response = model.generate_content([EXTRACTION_PROMPT, img])
-
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[EXTRACTION_PROMPT, img],
+    )
+    print(f"[Gemini RAW] {response.text}")
     return response.text
 
 

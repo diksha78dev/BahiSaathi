@@ -24,9 +24,9 @@ solves this for vernacular, low-tech users.
 
 ## Build Status
 - [x] Module 1 — Project setup + Database schema
-- [ ] Module 2 — FastAPI + Auth
-- [ ] Module 3 — Core API routes
-- [ ] Module 4 — Gemini AI layer
+- [x] Module 2 — FastAPI + Auth
+- [x] Module 3 — Core API routes
+- [x] Module 4 — Gemini AI layer
 - [ ] Module 5 — React + Auth UI
 - [ ] Module 6 — Dashboard UI
 - [ ] Module 7 — Reports + wiring
