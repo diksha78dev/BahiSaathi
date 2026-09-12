@@ -1,0 +1,43 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --ink: #1F3B57;
+  --ink-dark: #142943;
+  --ink-soft: #4C6178;
+  --paper: #F3EEDD;
+  --paper-line: #D8CFA9;
+  --paper-white: #FBF9F2;
+  --turmeric: #C68A2E;
+  --turmeric-dark: #A6721F;
+  --maroon: #8C2F39;
+  --success: #3F7D58;
+
+  --font-display: 'Fraunces', serif;
+  --font-body: 'Public Sans', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--ink-dark);
+  background: var(--paper-white);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  color: var(--ink-dark);
+  margin: 0 0 0.4em;
+}
+
+button {
+  font-family: inherit;
+}
