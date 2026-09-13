@@ -30,7 +30,7 @@ app = FastAPI(
 # ── CORS ────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # Module 8: replace with your Vercel URL
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,3 +65,4 @@ def health_check():
             "reports":   ["/reports/dashboard", "/reports/dues", "/reports/monthly/{year}/{month}"],
         }
     }
+

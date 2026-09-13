@@ -32,6 +32,14 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.full-page-loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  color: var(--ink-soft);
+}
+
 h1, h2, h3 {
   font-family: var(--font-display);
   color: var(--ink-dark);
