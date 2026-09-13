@@ -27,7 +27,7 @@ solves this for vernacular, low-tech users.
 - [x] Module 2 — FastAPI + Auth
 - [x] Module 3 — Core API routes
 - [x] Module 4 — Gemini AI layer
-- [ ] Module 5 — React + Auth UI
+- [x] Module 5 — React + Auth UI
 - [ ] Module 6 — Dashboard UI
 - [ ] Module 7 — Reports + wiring
 - [ ] Module 8 — Deploy
