@@ -26,28 +26,29 @@ from app.models.models import User
 
 # ── Password hashing setup ──────────────────────────────────────
 
-# CryptContext configures which algorithm to use.
-# bcrypt is intentionally slow (makes brute-force attacks impractical).
-# deprecated="auto" means old hashes are auto-upgraded on next login.
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# The first scheme is used for new hashes. pbkdf2_sha256 is pure Python
+# (built on hashlib), so it works everywhere — bcrypt's native DLL fails to
+# load on some Windows setups. bcrypt stays in the list so older bcrypt hashes
+# can still be verified wherever bcrypt is available (e.g. Linux in prod);
+# deprecated="auto" marks them for re-hashing as pbkdf2_sha256.
+pwd_context = CryptContext(schemes=["pbkdf2_sha256", "bcrypt"], deprecated="auto")
 
 
 def hash_password(plain_password: str) -> str:
-    """
-    Convert plain text → bcrypt hash.
-    Example: "mypassword123" → "$2b$12$abc...xyz"
-    The hash is different every time even for the same input (bcrypt adds salt).
-    """
+    """Convert plain text → pbkdf2_sha256 hash (salted, different every time)."""
     return pwd_context.hash(plain_password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Check if a plain password matches the stored hash.
-    Returns True if correct, False if wrong.
     Never compare strings directly — use this function.
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception:
+        # e.g. an old bcrypt hash on a machine where bcrypt can't load
+        return False
 
 
 # ── JWT token setup ─────────────────────────────────────────────

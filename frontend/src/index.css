@@ -12,8 +12,8 @@
   --maroon: #8C2F39;
   --success: #3F7D58;
 
-  --font-display: 'Fraunces', serif;
-  --font-body: 'Public Sans', sans-serif;
+  --font-body: 'Inter', -apple-system, sans-serif;
+  --font-display: 'Syne', 'Inter', sans-serif;
 }
 
 * {

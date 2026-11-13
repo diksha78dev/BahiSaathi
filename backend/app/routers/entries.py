@@ -195,9 +195,13 @@ async def upload_scan(
         from app.ai.extractor import extract_and_save
         extract_and_save(scan.id, file_path, current_user.id, db)
         db.refresh(scan)
-    except ImportError:
-        # Module 4 not built yet — scan stays as pending, that's fine
-        pass
+    except ImportError as e:
+        # Extractor or one of its dependencies (e.g. google-genai) failed to
+        # load — mark the scan failed so the frontend can show why
+        scan.status        = ScanStatus.failed
+        scan.error_message = f"AI extractor unavailable: {e}"
+        db.commit()
+        db.refresh(scan)
     except Exception as e:
         # AI failed — scan marked as failed inside extract_and_save
         # We still return the scan record so frontend can show the error
