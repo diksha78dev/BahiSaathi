@@ -1,5 +1,13 @@
-import { LayoutDashboard, Users, FileText, Settings, LogOut } from "lucide-react";
-import { useAuth } from "../context/AuthContext";
+/** Left navigation + logged-in shop. Customers/Reports/Settings pages arrive in Module 7. */
+import { FileText, LayoutDashboard, LogOut, Settings, Users } from "lucide-react";
+import { useAuth } from "../hooks/useAuth";
+
+const NAV_ITEMS = [
+  { label: "Dashboard", icon: LayoutDashboard, ready: true },
+  { label: "Customers", icon: Users, ready: false },
+  { label: "Reports", icon: FileText, ready: false },
+  { label: "Settings", icon: Settings, ready: false },
+];
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
@@ -7,49 +15,32 @@ export default function Sidebar() {
   return (
     <aside className="sidebar glass-card">
       <div className="brand">
-        <div className="avatar" style={{ width: 32, height: 32, fontSize: 16 }}>
-          B
-        </div>
+        <div className="avatar" style={{ width: 32, height: 32, fontSize: 16 }}>B</div>
         <span className="brand-text">BahiSaathi AI</span>
       </div>
 
       <nav className="nav-links">
-        <button className="nav-item active">
-          <LayoutDashboard size={20} />
-          Dashboard
-        </button>
-        <button className="nav-item">
-          <Users size={20} />
-          Customers
-        </button>
-        <button className="nav-item">
-          <FileText size={20} />
-          Reports
-        </button>
-        <button className="nav-item">
-          <Settings size={20} />
-          Settings
-        </button>
+        {NAV_ITEMS.map(({ label, icon: Icon, ready }) => (
+          <button
+            key={label}
+            className={`nav-item ${label === "Dashboard" ? "active" : ""}`}
+            disabled={!ready}
+            title={ready ? label : `${label} — coming soon`}
+          >
+            <Icon size={20} />
+            {label}
+            {!ready && <span className="soon-badge">Soon</span>}
+          </button>
+        ))}
       </nav>
 
       <div className="user-profile">
-        <div className="avatar" style={{ position: 'relative' }}>
-          {user?.shop_name?.charAt(0).toUpperCase() || 'U'}
-          <span className="online-indicator"></span>
+        <div className="avatar">{user.shop_name.charAt(0).toUpperCase()}</div>
+        <div style={{ flex: 1, overflow: "hidden" }}>
+          <div className="profile-name">{user.shop_name}</div>
+          <div className="text-secondary" style={{ fontSize: 12 }}>{user.owner_name}</div>
         </div>
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-            {user?.shop_name || 'My Shop'}
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            {user?.owner_name || 'Owner'}
-          </div>
-        </div>
-        <button 
-          onClick={logout} 
-          style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
-          title="Log out"
-        >
+        <button onClick={logout} className="icon-btn" title="Log out" aria-label="Log out">
           <LogOut size={20} />
         </button>
       </div>

@@ -1,199 +1,98 @@
 """
-BahiSaathi — Customers Router
+BahiSaathi — Customer routes
 
-Endpoints:
-  POST   /customers/          → create a new customer
-  GET    /customers/          → list all customers for this shop
-  GET    /customers/{id}      → get one customer + their entries
-  PATCH  /customers/{id}      → update customer details
-  DELETE /customers/{id}      → delete customer (only if no dues)
+  POST   /customers/      → add a customer
+  GET    /customers/      → list customers (with their dues)
+  GET    /customers/{id}  → one customer
+  PATCH  /customers/{id}  → update name / phone / notes
+  DELETE /customers/{id}  → delete (only when they owe nothing)
 """
+
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
-from uuid import UUID
 
 from app.database.connection import get_db
-from app.models.models import User, Customer, LedgerEntry
-from app.schemas.schemas import (
-    CustomerCreateRequest,
-    CustomerUpdateRequest,
-    CustomerResponse,
-)
+from app.models.models import Customer, User
+from app.schemas.schemas import CustomerCreateRequest, CustomerResponse, CustomerUpdateRequest
+from app.services import ledger_service
 from app.services.auth_service import get_current_user
 
 router = APIRouter(prefix="/customers", tags=["Customers"])
 
 
-@router.post(
-    "/",
-    response_model=CustomerResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Add a new customer"
-)
+def get_own_customer(db: Session, customer_id: UUID, user: User) -> Customer:
+    """Load a customer that belongs to this user, or 404."""
+    customer = db.query(Customer).filter(Customer.id == customer_id, Customer.user_id == user.id).first()
+    if not customer:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Customer not found.")
+    return customer
+
+
+def ensure_name_is_free(db: Session, user: User, name: str, current_id: UUID | None = None) -> None:
+    existing = ledger_service.find_customer_by_name(db, user.id, name)
+    if existing and existing.id != current_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Customer '{name}' already exists.")
+
+
+@router.post("/", response_model=CustomerResponse, status_code=status.HTTP_201_CREATED)
 def create_customer(
     request: CustomerCreateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    """
-    Add a new customer to this shop.
-
-    Why check for duplicates?
-    A shopkeeper might accidentally add "Ramesh" twice. We check
-    using name_normalized (lowercase) so "Ramesh" and "ramesh" are treated
-    as the same customer.
-    """
-    name_norm = request.name.lower().strip()
-
-    existing = db.query(Customer).filter(
-        Customer.user_id == current_user.id,
-        Customer.name_normalized == name_norm
-    ).first()
-
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Customer '{request.name}' already exists."
-        )
-
+    ensure_name_is_free(db, current_user, request.name)
     customer = Customer(
-        user_id         = current_user.id,
-        name            = request.name.strip(),
-        name_normalized = name_norm,
-        phone           = request.phone,
-        notes           = request.notes,
-        total_dues      = 0.0,
+        user_id=current_user.id,
+        name=request.name,
+        name_normalized=request.name.lower(),
+        phone=request.phone,
+        notes=request.notes,
     )
     db.add(customer)
     db.commit()
     db.refresh(customer)
-    return customer
+    return ledger_service.to_customer_response(customer, total_dues=0)
 
 
-@router.get(
-    "/",
-    response_model=List[CustomerResponse],
-    summary="List all customers"
-)
-def list_customers(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    skip: int = 0,
-    limit: int = 100
-):
-    """
-    Get all customers for the logged-in shop owner.
-    Ordered by name alphabetically.
-    skip + limit enable pagination if there are many customers.
-    """
-    customers = (
-        db.query(Customer)
-        .filter(Customer.user_id == current_user.id)
-        .order_by(Customer.name)
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
-    return customers
+@router.get("/", response_model=list[CustomerResponse])
+def list_customers(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return ledger_service.list_customers_with_dues(db, current_user.id)
 
 
-@router.get(
-    "/{customer_id}",
-    response_model=CustomerResponse,
-    summary="Get one customer"
-)
-def get_customer(
-    customer_id: UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Get a single customer by ID.
-    Returns 404 if the customer doesn't exist or belongs to another shop.
-    """
-    customer = db.query(Customer).filter(
-        Customer.id      == customer_id,
-        Customer.user_id == current_user.id
-    ).first()
-
-    if not customer:
-        raise HTTPException(status_code=404, detail="Customer not found.")
-    return customer
+@router.get("/{customer_id}", response_model=CustomerResponse)
+def get_customer(customer_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    customer = get_own_customer(db, customer_id, current_user)
+    return ledger_service.to_customer_response(customer, ledger_service.get_customer_dues(db, customer.id))
 
 
-@router.patch(
-    "/{customer_id}",
-    response_model=CustomerResponse,
-    summary="Update customer details"
-)
+@router.patch("/{customer_id}", response_model=CustomerResponse)
 def update_customer(
     customer_id: UUID,
     request: CustomerUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    """
-    Update a customer's name, phone, or notes.
-    Only updates fields that are actually sent — others stay unchanged.
+    customer = get_own_customer(db, customer_id, current_user)
+    changes = request.model_dump(exclude_unset=True)  # only the fields the client sent
 
-    This is PATCH not PUT — partial update.
-    PUT would require sending the full object every time.
-    PATCH lets you send only what changed.
-    """
-    customer = db.query(Customer).filter(
-        Customer.id      == customer_id,
-        Customer.user_id == current_user.id
-    ).first()
-
-    if not customer:
-        raise HTTPException(status_code=404, detail="Customer not found.")
-
-    if request.name is not None:
-        customer.name            = request.name.strip()
-        customer.name_normalized = request.name.lower().strip()
-
-    if request.phone is not None:
-        customer.phone = request.phone
-
-    if request.notes is not None:
-        customer.notes = request.notes
+    if "name" in changes:
+        ensure_name_is_free(db, current_user, changes["name"], current_id=customer.id)
+        customer.name_normalized = changes["name"].lower()
+    for field, value in changes.items():
+        setattr(customer, field, value)
 
     db.commit()
     db.refresh(customer)
-    return customer
+    return ledger_service.to_customer_response(customer, ledger_service.get_customer_dues(db, customer.id))
 
 
-@router.delete(
-    "/{customer_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete a customer"
-)
-def delete_customer(
-    customer_id: UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Delete a customer.
-    Blocked if the customer has outstanding dues — must settle first.
-
-    Status 204 = "No Content" — success, but nothing to return.
-    """
-    customer = db.query(Customer).filter(
-        Customer.id      == customer_id,
-        Customer.user_id == current_user.id
-    ).first()
-
-    if not customer:
-        raise HTTPException(status_code=404, detail="Customer not found.")
-
-    if customer.total_dues > 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete customer with ₹{customer.total_dues:.2f} outstanding dues."
-        )
-
+@router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_customer(customer_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    customer = get_own_customer(db, customer_id, current_user)
+    dues = ledger_service.get_customer_dues(db, customer.id)
+    if dues > 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Cannot delete a customer who owes ₹{dues:.2f}. Settle the dues first.")
     db.delete(customer)
     db.commit()

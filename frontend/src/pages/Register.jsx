@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { getErrorMessage } from "../api/client";
+import { useAuth } from "../hooks/useAuth";
 import "../styles/auth.css";
 
 const LANGUAGES = [
@@ -36,18 +37,13 @@ export default function Register() {
       setError("Passwords don't match.");
       return;
     }
-    if (form.password.length < 6) {
-      setError("Password must be at least 6 characters.");
-      return;
-    }
 
     setIsSubmitting(true);
     try {
       await register(form);
       navigate("/dashboard");
     } catch (err) {
-      const detail = err.response?.data?.detail;
-      setError(detail || "Couldn't create your account. Please try again.");
+      setError(getErrorMessage(err, "Couldn't create your account. Please try again."));
     } finally {
       setIsSubmitting(false);
     }

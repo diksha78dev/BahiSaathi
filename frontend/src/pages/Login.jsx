@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { getErrorMessage } from "../api/client";
+import { useAuth } from "../hooks/useAuth";
 import "../styles/auth.css";
 
 export default function Login() {
@@ -20,8 +21,7 @@ export default function Login() {
       await login(phone.trim(), password);
       navigate("/dashboard");
     } catch (err) {
-      const detail = err.response?.data?.detail;
-      setError(detail || "Couldn't log in. Check your phone number and password.");
+      setError(getErrorMessage(err, "Couldn't log in. Check your phone number and password."));
     } finally {
       setIsSubmitting(false);
     }

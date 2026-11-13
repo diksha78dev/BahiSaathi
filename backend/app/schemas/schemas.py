@@ -1,53 +1,52 @@
 """
-BahiSaathi — Pydantic Schemas
+BahiSaathi — API schemas (Pydantic)
 
-These define the shape of data at the API boundary.
-Two important rules:
-  1. These are NOT database models — they only describe what the API accepts/returns.
-  2. Never include hashed_password in any response schema.
+These describe the JSON the API accepts and returns. They are separate from
+the database models so the API never leaks internal fields (like
+hashed_password) and so input is validated before it reaches the database.
 
-Pattern:
-  XxxRequest  → what the client sends TO your API
-  XxxResponse → what your API sends BACK to the client
+Naming: XxxRequest = what the client sends, XxxResponse = what the API returns.
 """
 
-from pydantic import BaseModel, field_validator
-from typing import Optional, List
+import re
 from datetime import date, datetime
+from typing import Annotated, Literal, Optional
 from uuid import UUID
-from enum import Enum
+
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+
+from app.models.models import PaymentStatus, ScanStatus
+
+# Reusable field types
+NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+OptionalStr = Optional[Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)]]
 
 
-# ─────────────────────────────────────────────
-# Auth schemas
-# ─────────────────────────────────────────────
+def normalize_phone(value: str) -> str:
+    """Keep digits only and use the last 10 — "+91 98765-43210" → "9876543210"."""
+    digits = re.sub(r"\D", "", value)
+    if len(digits) < 10:
+        raise ValueError("Phone number must have at least 10 digits")
+    return digits[-10:]
+
+
+# ── Auth ────────────────────────────────────────────────────────
 
 class UserRegisterRequest(BaseModel):
-    shop_name: str
-    owner_name: str
-    phone: str                        # "+91XXXXXXXXXX" or "9XXXXXXXXX"
-    password: str
-    preferred_language: str = "hi"   # hi / mr / en
+    shop_name: NonEmptyStr
+    owner_name: NonEmptyStr
+    phone: str
+    password: Annotated[str, Field(min_length=6)]
+    preferred_language: Literal["hi", "mr", "en"] = "hi"
 
-    @field_validator("phone")
-    @classmethod
-    def phone_must_be_digits(cls, v):
-        digits = v.replace("+", "").replace("-", "").replace(" ", "")
-        if not digits.isdigit() or len(digits) < 10:
-            raise ValueError("Phone must have at least 10 digits")
-        return v
-
-    @field_validator("password")
-    @classmethod
-    def password_min_length(cls, v):
-        if len(v) < 6:
-            raise ValueError("Password must be at least 6 characters")
-        return v
+    _phone = field_validator("phone")(normalize_phone)
 
 
 class UserLoginRequest(BaseModel):
     phone: str
     password: str
+
+    _phone = field_validator("phone")(normalize_phone)
 
 
 class TokenResponse(BaseModel):
@@ -56,6 +55,8 @@ class TokenResponse(BaseModel):
 
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)  # read directly from the SQLAlchemy object
+
     id: UUID
     shop_name: str
     owner_name: str
@@ -63,24 +64,19 @@ class UserResponse(BaseModel):
     preferred_language: str
     created_at: datetime
 
-    # from_attributes=True lets Pydantic read from SQLAlchemy model attributes
-    # (previously called orm_mode=True in Pydantic v1)
-    model_config = {"from_attributes": True}
 
-
-# ─────────────────────────────────────────────
-# Customer schemas
-# ─────────────────────────────────────────────
+# ── Customers ───────────────────────────────────────────────────
 
 class CustomerCreateRequest(BaseModel):
-    name: str
-    phone: Optional[str] = None
+    name: NonEmptyStr
+    phone: OptionalStr = None
     notes: Optional[str] = None
 
 
 class CustomerUpdateRequest(BaseModel):
-    name: Optional[str] = None
-    phone: Optional[str] = None
+    """PATCH — only the fields that are sent get updated."""
+    name: Optional[NonEmptyStr] = None
+    phone: OptionalStr = None
     notes: Optional[str] = None
 
 
@@ -88,78 +84,68 @@ class CustomerResponse(BaseModel):
     id: UUID
     name: str
     phone: Optional[str]
-    total_dues: float
     notes: Optional[str]
+    total_dues: float  # calculated: sum of this customer's unpaid entries
     created_at: datetime
 
-    model_config = {"from_attributes": True}
 
-
-# ─────────────────────────────────────────────
-# Ledger entry schemas
-# ─────────────────────────────────────────────
-
-class PaymentStatusEnum(str, Enum):
-    udhaar = "udhaar"
-    paid   = "paid"
-
+# ── Ledger entries ──────────────────────────────────────────────
 
 class LedgerEntryManualRequest(BaseModel):
-    """For when the shopkeeper types an entry manually (no photo)."""
-    customer_id:      Optional[UUID]             = None
-    item_name:        str
-    quantity:         Optional[float]            = None
-    unit:             Optional[str]              = None
-    amount:           float
-    transaction_date: Optional[date]             = None
-    payment_status:   PaymentStatusEnum          = PaymentStatusEnum.udhaar
+    """An entry typed in by the shopkeeper. customer_name is matched to an
+    existing customer (case-insensitive) or creates a new one; leave it empty
+    for a walk-in sale."""
+    customer_name: OptionalStr = None
+    item_name: NonEmptyStr
+    quantity: Optional[Annotated[float, Field(gt=0)]] = None
+    unit: OptionalStr = None
+    amount: Annotated[float, Field(gt=0)]
+    transaction_date: Optional[date] = None  # defaults to today
+    payment_status: PaymentStatus = PaymentStatus.udhaar
 
 
 class LedgerEntryResponse(BaseModel):
-    id:               UUID
-    item_name:        str
-    quantity:         Optional[float]
-    unit:             Optional[str]
-    amount:           float
-    transaction_date: Optional[date]
-    payment_status:   PaymentStatusEnum
-    customer_id:      Optional[UUID]
-    is_manual:        bool
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    item_name: str
+    quantity: Optional[float]
+    unit: Optional[str]
+    amount: float
+    transaction_date: date
+    payment_status: PaymentStatus
+    customer_id: Optional[UUID]
+    customer_name: Optional[str]
+    is_manual: bool
     confidence_score: Optional[float]
-    created_at:       datetime
-
-    model_config = {"from_attributes": True}
+    created_at: datetime
 
 
-# ─────────────────────────────────────────────
-# OCR scan schemas
-# ─────────────────────────────────────────────
+# ── Scans ───────────────────────────────────────────────────────
 
 class OcrScanResponse(BaseModel):
-    id:                UUID
-    status:            str
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    status: ScanStatus
     entries_extracted: int
     detected_language: Optional[str]
-    error_message:     Optional[str]
-    created_at:        datetime
-
-    model_config = {"from_attributes": True}
+    error_message: Optional[str]
+    created_at: datetime
 
 
-# ─────────────────────────────────────────────
-# Report schemas
-# ─────────────────────────────────────────────
-
-class MonthlySummaryResponse(BaseModel):
-    month:        str     # "2024-06"
-    total_sales:  float
-    total_udhaar: float
-    total_paid:   float
-    entry_count:  int
-
+# ── Reports ─────────────────────────────────────────────────────
 
 class DashboardStatsResponse(BaseModel):
     total_sales_this_month: float
-    total_udhaar:           float
-    total_customers:        int
-    scans_this_month:       int
+    total_udhaar: float
+    total_customers: int
+    scans_this_month: int
+
+
+class MonthlySummaryResponse(BaseModel):
+    month: str  # "2026-11"
+    total_sales: float
+    total_udhaar: float
+    total_paid: float
+    entry_count: int

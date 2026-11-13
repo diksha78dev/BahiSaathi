@@ -1,28 +1,19 @@
 """
-BahiSaathi — Database initialiser
-Run this ONCE to create all tables in PostgreSQL.
+BahiSaathi — Create database tables
 
-Usage (from inside the backend/ folder, with venv active):
+Usage (from backend/, with the venv active):
     python -m app.database.init_db
 
-Safe to run multiple times — create_all() skips tables that already exist.
+Safe to run repeatedly: create_all() skips tables that already exist.
 """
 
-from app.database.connection import engine, Base
-
-# These imports register the models with Base.metadata
-# Without them, create_all() doesn't know these tables exist
-from app.models.models import User, Customer, LedgerEntry, OcrScan  # noqa: F401
+from app.database.connection import Base, engine
+from app.models import models  # noqa: F401 — importing registers the tables on Base
 
 
 def init_db():
-    print("\n🚀 BahiSaathi — Creating database tables...")
     Base.metadata.create_all(bind=engine)
-    print("\n✅ Done! Tables created:")
-    for table_name in Base.metadata.tables.keys():
-        print(f"   ✓ {table_name}")
-    print("\nYou can verify these in pgAdmin under:")
-    print("  Servers → PostgreSQL → Databases → bahisaathi_db → Schemas → public → Tables\n")
+    print("Tables ready:", ", ".join(Base.metadata.tables.keys()))
 
 
 if __name__ == "__main__":
