@@ -1,14 +1,17 @@
 """
 BahiSaathi — Ledger entry routes
 
-  GET    /entries/                     → list entries (newest first)
-  POST   /entries/manual               → add an entry by typing it
-  POST   /entries/upload-scan          → upload a bahi photo → AI extracts entries
-  GET    /entries/scan/{scan_id}       → status of a scan
-  PATCH  /entries/{entry_id}/mark-paid → mark an udhaar entry as paid
-  DELETE /entries/{entry_id}           → delete an entry
+  GET    /entries/                       → list entries (newest first)
+  POST   /entries/manual                 → add an entry by typing it
+  POST   /entries/upload-scan            → upload a bahi photo → AI returns a DRAFT to review
+  GET    /entries/scan/{scan_id}         → status (and draft) of a scan
+  POST   /entries/scan/{scan_id}/confirm → save the reviewed lines to the ledger
+  POST   /entries/scan/{scan_id}/discard → throw the draft away
+  PATCH  /entries/{entry_id}/mark-paid   → mark an udhaar entry as paid
+  DELETE /entries/{entry_id}             → delete an entry
 """
 
+import hashlib
 import os
 import uuid
 from typing import Optional
@@ -19,8 +22,8 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.config import MAX_UPLOAD_MB, UPLOAD_DIR
 from app.database.connection import get_db
-from app.models.models import LedgerEntry, OcrScan, PaymentStatus, User
-from app.schemas.schemas import LedgerEntryManualRequest, LedgerEntryResponse, OcrScanResponse
+from app.models.models import LedgerEntry, OcrScan, PaymentStatus, ScanStatus, User
+from app.schemas.schemas import LedgerEntryManualRequest, LedgerEntryResponse, OcrScanResponse, ScanConfirmRequest
 from app.services import ledger_service
 from app.services.auth_service import get_current_user
 
@@ -36,6 +39,22 @@ def get_own_entry(db: Session, entry_id: UUID, user: User) -> LedgerEntry:
     if not entry:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Entry not found.")
     return entry
+
+
+def get_own_scan(db: Session, scan_id: UUID, user: User) -> OcrScan:
+    """Load a scan that belongs to this user, or 404."""
+    scan = db.query(OcrScan).filter(OcrScan.id == scan_id, OcrScan.user_id == user.id).first()
+    if not scan:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Scan not found.")
+    return scan
+
+
+def get_scan_awaiting_review(db: Session, scan_id: UUID, user: User) -> OcrScan:
+    """A scan can only be confirmed or discarded once, straight after the AI step."""
+    scan = get_own_scan(db, scan_id, user)
+    if scan.status != ScanStatus.needs_review:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"This scan is already {scan.status.value}.")
+    return scan
 
 
 @router.get("/", response_model=list[LedgerEntryResponse])
@@ -81,7 +100,8 @@ async def upload_scan(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Save the photo, run the AI on it, and return the scan record.
+    Save the photo, run the AI on it, and return the scan with its DRAFT entries
+    (status "needs_review"). Nothing is added to the ledger until /confirm.
     If the AI fails, the scan comes back with status "failed" and an error_message.
     (Processing is synchronous for now — simple to follow and debug.)
     """
@@ -93,25 +113,55 @@ async def upload_scan(
     if len(contents) > MAX_UPLOAD_MB * 1024 * 1024:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, f"Image must be {MAX_UPLOAD_MB} MB or smaller.")
 
+    # Same photo already saved? Stop before spending an AI call on it.
+    image_hash = hashlib.sha256(contents).hexdigest()
+    earlier = ledger_service.find_saved_scan_with_same_image(db, current_user.id, image_hash)
+    if earlier:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"This photo was already saved on {earlier.created_at:%d %b %Y}. Its entries are in your ledger.",
+        )
+
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     image_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4()}.{extension}")
     with open(image_path, "wb") as saved:
         saved.write(contents)
 
-    scan = OcrScan(user_id=current_user.id, image_path=image_path)
+    scan = OcrScan(user_id=current_user.id, image_path=image_path, image_hash=image_hash)
     db.add(scan)
     db.commit()
 
-    ledger_service.process_scan(db, scan)
+    ledger_service.extract_scan(db, scan)
     db.refresh(scan)
     return scan
 
 
 @router.get("/scan/{scan_id}", response_model=OcrScanResponse)
 def get_scan(scan_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    scan = db.query(OcrScan).filter(OcrScan.id == scan_id, OcrScan.user_id == current_user.id).first()
-    if not scan:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Scan not found.")
+    return get_own_scan(db, scan_id, current_user)
+
+
+@router.post("/scan/{scan_id}/confirm", response_model=OcrScanResponse)
+def confirm_scan(
+    scan_id: UUID,
+    request: ScanConfirmRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Save the lines the shopkeeper reviewed (and possibly edited) to the ledger."""
+    scan = get_scan_awaiting_review(db, scan_id, current_user)
+    ledger_service.confirm_scan(db, scan, request.entries)
+    db.commit()
+    db.refresh(scan)
+    return scan
+
+
+@router.post("/scan/{scan_id}/discard", response_model=OcrScanResponse)
+def discard_scan(scan_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    scan = get_scan_awaiting_review(db, scan_id, current_user)
+    ledger_service.discard_scan(scan)
+    db.commit()
+    db.refresh(scan)
     return scan
 
 

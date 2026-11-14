@@ -5,7 +5,7 @@ BahiSaathi — Database models (SQLAlchemy)
   users           → one row = one shop owner account
   customers       → people the shopkeeper sells to
   ledger_entries  → one row = one line in the bahi (the heart of the app)
-  ocr_scans       → one row = one uploaded photo + the AI result
+  ocr_scans       → one row = one uploaded photo + the AI's draft, until reviewed
 
 Relationships:
   users     (1) ──► (many) customers, ledger_entries, ocr_scans
@@ -22,7 +22,7 @@ import uuid
 from datetime import date, datetime
 
 from sqlalchemy import Boolean, Column, Date, DateTime, Enum, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from app.database.connection import Base
@@ -36,9 +36,16 @@ class PaymentStatus(str, enum.Enum):
 
 
 class ScanStatus(str, enum.Enum):
-    pending = "pending"      # image saved, AI not finished
-    completed = "completed"  # entries extracted and saved
-    failed = "failed"        # AI step errored — see error_message
+    """
+    Life of one scan:  pending ──► needs_review ──► completed
+                          │              └──────► discarded
+                          └──► failed
+    """
+    pending = "pending"            # image saved, AI not finished
+    needs_review = "needs_review"  # AI draft ready — waiting for the shopkeeper to check it
+    completed = "completed"        # shopkeeper confirmed — entries saved to the ledger
+    discarded = "discarded"        # shopkeeper threw the draft away
+    failed = "failed"              # AI step errored — see error_message
 
 
 # ── users ────────────────────────────────────────────────────────
@@ -124,8 +131,13 @@ class OcrScan(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     image_path = Column(String(500), nullable=False)
+    # SHA-256 of the image bytes — lets us refuse the exact same photo being saved twice
+    image_hash = Column(String(64), nullable=True, index=True)
     raw_ocr_text = Column(Text, nullable=True)  # Gemini's raw reply, kept for debugging
-    entries_extracted = Column(Integer, default=0, nullable=False)
+    # The AI's draft lines, shown to the shopkeeper for review. Nothing reaches
+    # ledger_entries until they confirm (see ledger_service.confirm_scan).
+    extracted_entries = Column(JSONB, nullable=True)
+    entries_extracted = Column(Integer, default=0, nullable=False)  # lines saved on confirm
     status = Column(Enum(ScanStatus), default=ScanStatus.pending, nullable=False, index=True)
     error_message = Column(Text, nullable=True)
     detected_language = Column(String(10), nullable=True)  # "en" or "mixed" (has Devanagari)

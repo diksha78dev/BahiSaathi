@@ -7,23 +7,10 @@ import { motion } from "framer-motion";
 import { Loader2, PlusCircle } from "lucide-react";
 import { useState } from "react";
 import { getErrorMessage } from "../api/client";
-
-const EMPTY_FORM = { customer_name: "", item_name: "", quantity: "", unit: "", amount: "", payment_status: "udhaar" };
-
-/** Form strings → the JSON body POST /entries/manual expects */
-function toRequestBody(form) {
-  return {
-    customer_name: form.customer_name.trim() || null,
-    item_name: form.item_name.trim(),
-    quantity: form.quantity ? Number(form.quantity) : null,
-    unit: form.unit.trim() || null,
-    amount: Number(form.amount),
-    payment_status: form.payment_status,
-  };
-}
+import { EMPTY_ENTRY_FORM, formToEntry } from "../utils/entryForm";
 
 export default function ManualEntryForm({ customers, onSubmit }) {
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState(EMPTY_ENTRY_FORM);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -34,8 +21,8 @@ export default function ManualEntryForm({ customers, onSubmit }) {
     setIsSaving(true);
     setError("");
     try {
-      await onSubmit(toRequestBody(form));
-      setForm(EMPTY_FORM);
+      await onSubmit(formToEntry(form));
+      setForm(EMPTY_ENTRY_FORM);
     } catch (err) {
       setError(getErrorMessage(err, "Couldn't add the entry."));
     } finally {

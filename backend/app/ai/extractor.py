@@ -2,9 +2,10 @@
 BahiSaathi — Gemini ledger extractor
 
 One job: photo of a bahi page → list of validated entries.
-It does not touch the database; ledger_service.process_scan() saves the result.
+It does not touch the database; ledger_service.extract_scan() stores the result
+as a draft for the shopkeeper to review.
 
-  image ──► Gemini (vision, JSON mode) ──► JSON text ──► ExtractedEntry objects
+  image ──► straighten (EXIF) ──► Gemini (vision, JSON mode) ──► JSON text ──► ExtractedEntry objects
 """
 
 import json
@@ -15,7 +16,7 @@ from typing import Optional
 
 from google import genai
 from google.genai import types
-from PIL import Image
+from PIL import Image, ImageOps
 from pydantic import BaseModel, ValidationError, field_validator
 
 from app.config import GEMINI_API_KEY, GEMINI_MODEL
@@ -36,11 +37,15 @@ Extract EVERY transaction line on the page as a JSON array. Each item has exactl
   payment_status   : "udhaar" or "paid"    (use "udhaar" if unclear)
   confidence       : number 0.0–1.0   (how sure you are about this line)
 
-Vocabulary: उधार/उधारी = udhaar (credit) · नकद/कॅश/जमा = paid · किलो = kg · लिटर = litre ·
-पाव = 250 g · अर्धा = 500 g · रु/Rs/₹ = rupees.
+Vocabulary: उधार/उधारी = udhaar (credit) · नकद/कॅश/जमा/पैसे दिले/दिले = paid · किलो = kg ·
+लिटर = litre · पाव = 250 g · अर्धा = 500 g · रु/Rs/₹ = rupees.
 
-Rules: every item must have item_name and amount_inr; use null for unreadable fields;
-if nothing is readable return [].
+Rules:
+- A customer's name applies to every line under it (often numbered 1., 2., ...) until the
+  next name appears — repeat the name on each of those lines.
+- Column headings (e.g. माल / पैसे / Item / Amount) are not transactions.
+- Every item must have item_name and amount_inr; use null for unreadable fields.
+- If nothing is readable return [].
 """
 
 
@@ -83,7 +88,10 @@ def extract_entries(image_path: str) -> ExtractionResult:
         raise RuntimeError("GEMINI_API_KEY is not set in backend/.env")
 
     client = genai.Client(api_key=GEMINI_API_KEY)
-    with Image.open(image_path) as image:
+    with Image.open(image_path) as photo:
+        # Phones often save photos sideways plus an EXIF "rotate me" flag.
+        # Apply that rotation so the AI sees the page upright.
+        image = ImageOps.exif_transpose(photo)
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=[PROMPT_TEMPLATE.format(today=date.today().isoformat()), image],

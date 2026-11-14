@@ -590,3 +590,67 @@
   cursor: pointer;
 }
 .icon-btn:hover { color: var(--text-primary); }
+.icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Scan review table ── */
+.review-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  color: #f59e0b;
+  font-weight: 600;
+}
+
+.review-table-wrap { overflow-x: auto; }   /* scroll sideways on small screens */
+
+.review-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 6px;
+  min-width: 860px;
+}
+
+.review-table th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0 6px;
+}
+
+.review-table td { padding: 4px 6px; vertical-align: top; }
+.review-table .glass-input { padding: 8px 10px; }
+.review-table .glass-input.narrow { width: 80px; }
+.review-table input[type="date"] { width: 140px; }
+.review-table select.glass-input { width: 100px; }
+
+/* AI wasn't sure about this line: amber edge + "Check" tag */
+.review-table tr.low-confidence td { background: rgba(245, 158, 11, 0.08); }
+.review-table tr.low-confidence td:first-child { box-shadow: inset 3px 0 0 #f59e0b; border-radius: 8px 0 0 8px; }
+.review-table tr.low-confidence td:last-child { border-radius: 0 8px 8px 0; }
+
+.confidence-hint {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #f59e0b;
+}
+
+.glass-input.input-invalid { border-color: var(--danger); }
+
+.review-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.review-actions { display: flex; gap: 8px; }

@@ -126,9 +126,24 @@ def mark_entry_paid(entry: LedgerEntry) -> None:
 
 # ── Scans ───────────────────────────────────────────────────────
 
-def process_scan(db: Session, scan: OcrScan) -> None:
+# A scan never writes to the ledger by itself. The AI produces a DRAFT, the
+# shopkeeper corrects it, and only confirm_scan() turns it into real entries:
+#
+#   upload ─► extract_scan()  ─► needs_review ─► confirm_scan() ─► completed
+#                                      └──────► discard_scan() ─► discarded
+
+def find_saved_scan_with_same_image(db: Session, user_id: UUID, image_hash: str) -> Optional[OcrScan]:
+    """A previously CONFIRMED scan of the exact same photo, if any."""
+    return db.query(OcrScan).filter(
+        OcrScan.user_id == user_id,
+        OcrScan.image_hash == image_hash,
+        OcrScan.status == ScanStatus.completed,
+    ).first()
+
+
+def extract_scan(db: Session, scan: OcrScan) -> None:
     """
-    Run the AI on an uploaded photo and save what it finds.
+    Run the AI on an uploaded photo and keep its result as a draft on the scan.
     Never raises: on any failure the scan is marked failed with the reason,
     so the frontend can show it.
     """
@@ -137,29 +152,50 @@ def process_scan(db: Session, scan: OcrScan) -> None:
         from app.ai.extractor import extract_entries
 
         result = extract_entries(scan.image_path)
-        for item in result.entries:
-            create_entry(
-                db,
-                scan.user_id,
-                item_name=item.item_name,
-                amount=item.amount_inr,
-                customer_name=item.customer_name,
-                quantity=item.quantity,
-                unit=item.unit,
-                transaction_date=item.transaction_date,
-                payment_status=item.payment_status,
-                is_manual=False,
-                confidence_score=item.confidence,
-                ocr_scan_id=scan.id,
-            )
-        scan.status = ScanStatus.completed
-        scan.entries_extracted = len(result.entries)
+        scan.extracted_entries = [
+            {
+                "customer_name": item.customer_name,
+                "item_name": item.item_name,
+                "quantity": item.quantity,
+                "unit": item.unit,
+                "amount": item.amount_inr,
+                "transaction_date": item.transaction_date.isoformat() if item.transaction_date else None,
+                "payment_status": item.payment_status.value,
+                "confidence": item.confidence,
+            }
+            for item in result.entries
+        ]
+        scan.status = ScanStatus.needs_review
         scan.raw_ocr_text = result.raw_text
         scan.detected_language = result.detected_language
     except Exception as error:
-        db.rollback()  # discard any half-saved entries from this scan
         scan.status = ScanStatus.failed
         scan.error_message = str(error)
 
     scan.processed_at = datetime.utcnow()
     db.commit()
+
+
+def confirm_scan(db: Session, scan: OcrScan, entries: list) -> None:
+    """Save the shopkeeper-reviewed lines to the ledger (all or nothing — caller commits)."""
+    for line in entries:
+        create_entry(
+            db,
+            scan.user_id,
+            customer_name=line.customer_name,
+            item_name=line.item_name,
+            quantity=line.quantity,
+            unit=line.unit,
+            amount=line.amount,
+            transaction_date=line.transaction_date,
+            payment_status=line.payment_status,
+            is_manual=False,
+            confidence_score=line.confidence,
+            ocr_scan_id=scan.id,
+        )
+    scan.status = ScanStatus.completed
+    scan.entries_extracted = len(entries)
+
+
+def discard_scan(scan: OcrScan) -> None:
+    scan.status = ScanStatus.discarded

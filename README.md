@@ -64,8 +64,9 @@ pages/ + components/   ── uses ──►  api/*.js  ──HTTP + JWT──�
 | `context/` + `hooks/useAuth` | Who is logged in; login / register / logout |
 | `hooks/useDashboardData` | Loads stats, entries, dues, customers in parallel; `reload()` refreshes all |
 | `pages/` | Screens. `Dashboard` owns data + actions and passes them down as props |
-| `components/` | Presentational pieces (stat cards, lists, form, upload) |
+| `components/` | Presentational pieces (stat cards, lists, form, upload, scan review) |
 | `utils/format.js` | ₹ / date / quantity formatting |
+| `utils/entryForm.js` | Form strings ⇄ API entry, shared by the manual form and the scan review |
 
 ### Request flows
 
@@ -78,17 +79,32 @@ pages/ + components/   ── uses ──►  api/*.js  ──HTTP + JWT──�
 `POST /entries/manual {customer_name?, item_name, amount, ...}` → `ledger_service.create_entry()` finds the
 customer case-insensitively ("Ramesh" = "ramesh ") or creates them, then saves the entry. Blank name = walk-in sale.
 
-**Photo scan**
-`POST /entries/upload-scan` (multipart image) → type and size checked → image saved → `OcrScan` row (pending) →
-`ledger_service.process_scan()` → `extractor.extract_entries()` asks Gemini for a JSON array → each line validated →
-saved through the **same** `create_entry()` as manual entries → scan marked `completed` (or `failed` with the reason,
-which the UI shows).
+**Photo scan (AI reads → shopkeeper checks → then saved)**
+```
+upload ─► pending ─► needs_review ─► confirm ─► completed   (entries now in the ledger)
+             │             └───────► discard ─► discarded   (nothing saved)
+             └──► failed (reason shown in the UI)
+```
+1. `POST /entries/upload-scan` (multipart image) → type and size checked → SHA-256 of the photo compared with this
+   shop's saved scans (exact same photo already saved → `409`, no AI call spent) → image saved → `OcrScan` row.
+2. `ledger_service.extract_scan()` → `extractor.extract_entries()` straightens the photo (EXIF rotation) and asks
+   Gemini for a JSON array → each line validated → kept as a **draft** in `ocr_scans.extracted_entries`.
+   **Nothing is written to the ledger yet.** The scan comes back as `needs_review` with the draft.
+3. The dashboard shows the draft in `ScanReview`: every field editable, lines can be removed or added, lines the AI
+   was unsure about (confidence < 0.85) are highlighted.
+4. `POST /entries/scan/{id}/confirm {entries}` saves the reviewed lines through the **same** `create_entry()` as
+   manual entries. `POST /entries/scan/{id}/discard` throws the draft away. Either works once (`409` after that).
+
+Why review first: in real-photo tests Gemini read clear pages 7/7 correctly, but a sideways photo put one item under
+the wrong customer, and re-scanning a page silently doubled the dues. A wrong ledger costs the shopkeeper real money,
+so a human confirms before anything is saved.
 
 ### Design decisions worth knowing
 - **Dues are calculated, never stored.** A customer's dues = `SUM(amount)` of their `udhaar` entries, done in SQL.
   There's no running total to keep in sync, so marking paid or deleting an entry can't leave dues wrong.
 - **Reports group by `transaction_date`** (the date written in the bahi), which defaults to today.
 - **One code path for manual and AI entries** (`create_entry`), so both behave the same.
+- **AI output is a suggestion, not data.** Scans are reviewed by the shopkeeper before they touch the ledger.
 - **No hardcoded secrets or URLs** — everything comes from `.env` (see the `.env.example` files).
 - **Uploaded photos are private** — saved on disk, not served publicly.
 
@@ -104,8 +120,10 @@ Interactive docs with "Try it out": http://localhost:8000/docs (click **Authoriz
 | GET | `/auth/me` | Current user |
 | GET | `/entries/?payment_status=udhaar` | List entries (newest first) |
 | POST | `/entries/manual` | Add an entry |
-| POST | `/entries/upload-scan` | Upload a bahi photo for AI extraction |
-| GET | `/entries/scan/{id}` | Scan status |
+| POST | `/entries/upload-scan` | Upload a bahi photo → AI draft to review (nothing saved yet) |
+| GET | `/entries/scan/{id}` | Scan status and draft |
+| POST | `/entries/scan/{id}/confirm` | Save the reviewed lines to the ledger |
+| POST | `/entries/scan/{id}/discard` | Throw the draft away |
 | PATCH | `/entries/{id}/mark-paid` | Mark an udhaar entry paid |
 | DELETE | `/entries/{id}` | Delete an entry |
 | GET/POST | `/customers/` | List (with dues) / create customers |
@@ -129,6 +147,8 @@ copy .env.example .env         # then fill in DATABASE_URL, SECRET_KEY, GEMINI_A
 python -m app.database.init_db
 uvicorn main:app --reload
 ```
+`init_db` creates every table for a new database. A database created before a schema change needs the matching
+file in `backend/migrations/` (additive, safe to run twice), e.g. `psql "<DATABASE_URL>" -f migrations/001_scan_review.sql`.
 
 ### Frontend
 ```bash

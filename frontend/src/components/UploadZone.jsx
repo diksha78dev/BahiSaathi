@@ -1,5 +1,6 @@
 /**
  * Upload a photo of a bahi page. Props: onUpload(file) → resolves to the scan record.
+ * The AI's draft is then reviewed in <ScanReview> (the Dashboard shows it).
  * File type and size limits are enforced by the backend; its message is shown here.
  */
 import { AnimatePresence, motion } from "framer-motion";
@@ -14,9 +15,9 @@ function describeScan(scan) {
   if (scan.status === "failed") {
     return { success: false, message: scan.error_message || "The AI couldn't read this page." };
   }
-  const count = scan.entries_extracted;
+  const count = scan.extracted_entries.length;
   if (count === 0) return { success: false, message: "No entries found on this page." };
-  return { success: true, message: `${count} ${count === 1 ? "entry" : "entries"} extracted ✓` };
+  return { success: true, message: `${count} ${count === 1 ? "line" : "lines"} found — review them before saving.` };
 }
 
 export default function UploadZone({ onUpload }) {
@@ -43,7 +44,7 @@ export default function UploadZone({ onUpload }) {
     <div className="glass-card">
       <h3>Scan Bahi Page</h3>
       <p className="text-secondary" style={{ marginBottom: 20 }}>
-        Upload a photo of your ledger and let Gemini extract the entries automatically.
+        Upload a photo of your ledger. Gemini reads it, and you check the lines before they're saved.
       </p>
 
       <div

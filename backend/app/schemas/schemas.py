@@ -123,12 +123,36 @@ class LedgerEntryResponse(BaseModel):
 
 # ── Scans ───────────────────────────────────────────────────────
 
+class ScanDraftEntry(BaseModel):
+    """One line as the AI read it. Deliberately loose (amount may be 0, item may be
+    misread) — it is a suggestion for the shopkeeper to fix, not a ledger entry yet."""
+    customer_name: Optional[str] = None
+    item_name: str
+    quantity: Optional[float] = None
+    unit: Optional[str] = None
+    amount: float
+    transaction_date: Optional[date] = None
+    payment_status: PaymentStatus = PaymentStatus.udhaar
+    confidence: Optional[float] = None  # 0.0–1.0, how sure the AI was
+
+
+class ScanConfirmEntry(LedgerEntryManualRequest):
+    """One reviewed line. Same rules as a manual entry, plus the AI's confidence
+    (null for a line the shopkeeper added themselves)."""
+    confidence: Optional[Annotated[float, Field(ge=0, le=1)]] = None
+
+
+class ScanConfirmRequest(BaseModel):
+    entries: Annotated[list[ScanConfirmEntry], Field(min_length=1)]  # to save nothing, discard instead
+
+
 class OcrScanResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     status: ScanStatus
-    entries_extracted: int
+    extracted_entries: Optional[list[ScanDraftEntry]]  # the AI's draft (needs_review)
+    entries_extracted: int                             # lines saved to the ledger on confirm
     detected_language: Optional[str]
     error_message: Optional[str]
     created_at: datetime
