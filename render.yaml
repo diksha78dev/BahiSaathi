@@ -1,0 +1,30 @@
+# Render Blueprint — the backend API (https://render.com/docs/blueprint-spec)
+#
+# Render reads this file when you create a "Blueprint" from the GitHub repo.
+# The database lives on Neon (free, permanent); the frontend lives on Vercel.
+# Values marked `sync: false` are secrets: Render asks for them on first deploy,
+# and they are never stored in this repo.
+
+services:
+  - type: web
+    name: bahisaathi-api
+    runtime: python
+    plan: free
+    region: singapore          # closest Render region to India
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # create_all() is safe to run every start: it only creates missing tables
+    startCommand: python -m app.database.init_db && uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    autoDeploy: true           # every push to main redeploys
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      - key: DATABASE_URL      # Neon connection string
+        sync: false
+      - key: SECRET_KEY        # signs login tokens — Render generates a random one
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: CORS_ORIGINS      # the Vercel URL of the frontend
+        sync: false

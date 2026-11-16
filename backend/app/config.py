@@ -29,6 +29,9 @@ def _required(name: str) -> str:
 
 # ── Database ────────────────────────────────────────────────────
 DATABASE_URL = _required("DATABASE_URL")
+# Some hosts hand out "postgres://..." URLs; SQLAlchemy 2 only accepts "postgresql://"
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = "postgresql://" + DATABASE_URL[len("postgres://"):]
 
 # ── Auth (JWT) ──────────────────────────────────────────────────
 SECRET_KEY = _required("SECRET_KEY")
