@@ -69,6 +69,7 @@ pages/ + components/   ── uses ──►  api/*.js  ──HTTP + JWT──�
 | `pages/` | Screens. Each page owns its data + actions and passes them down as props |
 | `components/` | Presentational pieces (stat cards, lists, forms, upload, scan review) |
 | `utils/format.js` | ₹ / date / quantity formatting, days since a date |
+| `utils/languages.js` | Language choices (hi / mr / en), shared by Register and Settings |
 | `utils/entryForm.js` | Form strings ⇄ API entry, shared by the manual form and the scan review |
 
 ### Frontend routes
@@ -78,7 +79,8 @@ pages/ + components/   ── uses ──►  api/*.js  ──HTTP + JWT──�
 | `/dashboard` | `Dashboard` | Stats, scan upload + review, manual entry, recent entries, dues |
 | `/customers` | `Customers` | All customers with dues; search, sort, add |
 | `/customers/:customerId` | `CustomerDetail` | One customer's ledger; edit, delete, mark paid |
-| `/reports`, `/settings` | `ComingSoon` | Placeholders until their pages are built (sidebar shows "Soon") |
+| `/settings` | `Settings` | Shop profile (preferred language is saved but the UI isn't translated yet) and change password |
+| `/reports` | `ComingSoon` | Placeholder until its page is built (sidebar shows "Soon") |
 
 Every logged-in route is nested under one `<ProtectedRoute><AppLayout /></ProtectedRoute>` in `App.jsx`, so the login
 check and the sidebar are written once. The sidebar uses `NavLink`, so the active item comes from the URL
@@ -147,6 +149,8 @@ Interactive docs with "Try it out": http://localhost:8000/docs (click **Authoriz
 | POST | `/auth/register` | Create a shop account |
 | POST | `/auth/login` | Get a JWT |
 | GET | `/auth/me` | Current user |
+| PATCH | `/auth/me` | Update `shop_name`, `owner_name`, `preferred_language` (phone is the login id and can't be changed) |
+| POST | `/auth/change-password` | `{current_password, new_password}` → 204; wrong current password → 400 |
 | GET | `/entries/?payment_status=udhaar&customer_id=…&limit=50` | List entries (newest first); all filters optional, `limit` ≤ 500 |
 | POST | `/entries/manual` | Add an entry |
 | POST | `/entries/upload-scan` | Upload a bahi photo → AI draft to review (nothing saved yet) |

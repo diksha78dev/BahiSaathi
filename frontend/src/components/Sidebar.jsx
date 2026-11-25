@@ -11,7 +11,7 @@ const NAV_ITEMS = [
   { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard, ready: true },
   { label: "Customers", path: "/customers", icon: Users, ready: true },
   { label: "Reports", path: "/reports", icon: FileText, ready: false },
-  { label: "Settings", path: "/settings", icon: Settings, ready: false },
+  { label: "Settings", path: "/settings", icon: Settings, ready: true },
 ];
 
 export default function Sidebar() {

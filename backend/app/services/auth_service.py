@@ -37,6 +37,23 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 
+# ── Profile ─────────────────────────────────────────────────────
+
+def update_profile(db: Session, user: User, changes: dict) -> User:
+    """Apply already-validated profile fields (shop_name, owner_name, preferred_language)."""
+    for field, value in changes.items():
+        setattr(user, field, value)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def change_password(db: Session, user: User, new_password: str) -> None:
+    """Store a new hash. The caller has already checked the current password."""
+    user.hashed_password = hash_password(new_password)
+    db.commit()
+
+
 # ── Tokens ──────────────────────────────────────────────────────
 
 def create_access_token(user_id: UUID) -> str:

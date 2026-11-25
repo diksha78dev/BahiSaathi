@@ -6,7 +6,7 @@
  * to; if that fails the token is stale and we treat the user as logged out.
  */
 import { useEffect, useState } from "react";
-import { fetchCurrentUser, loginUser, registerUser } from "../api/auth";
+import { fetchCurrentUser, loginUser, registerUser, updateProfile } from "../api/auth";
 import { TOKEN_KEY } from "../api/client";
 import { AuthContext } from "./AuthContext";
 
@@ -34,11 +34,18 @@ export function AuthProvider({ children }) {
     await login(form.phone, form.password); // log straight in after sign-up
   }
 
+  /** Save profile changes and swap in the returned user, so the sidebar name updates at once */
+  async function saveProfile(changes) {
+    const updated = await updateProfile(changes);
+    setUser(updated);
+    return updated;
+  }
+
   function logout() {
     localStorage.removeItem(TOKEN_KEY);
     setUser(null);
   }
 
-  const value = { user, isLoading, isAuthenticated: Boolean(user), login, register, logout };
+  const value = { user, isLoading, isAuthenticated: Boolean(user), login, register, saveProfile, logout };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

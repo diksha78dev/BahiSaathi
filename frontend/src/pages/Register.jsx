@@ -2,13 +2,8 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getErrorMessage } from "../api/client";
 import { useAuth } from "../hooks/useAuth";
+import { LANGUAGES } from "../utils/languages";
 import "../styles/auth.css";
-
-const LANGUAGES = [
-  { value: "hi", label: "Hindi" },
-  { value: "mr", label: "Marathi" },
-  { value: "en", label: "English" },
-];
 
 export default function Register() {
   const { register } = useAuth();

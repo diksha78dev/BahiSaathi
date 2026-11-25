@@ -42,6 +42,24 @@ class UserRegisterRequest(BaseModel):
     _phone = field_validator("phone")(normalize_phone)
 
 
+class UserUpdateRequest(BaseModel):
+    """
+    PATCH /auth/me — only the fields that are sent get updated.
+    Phone isn't here on purpose: it is the login id, so changing it needs its own
+    flow. extra="forbid" makes a sent "phone" a clear 422 instead of being silently ignored.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    shop_name: Optional[NonEmptyStr] = None
+    owner_name: Optional[NonEmptyStr] = None
+    preferred_language: Optional[Literal["hi", "mr", "en"]] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: Annotated[str, Field(min_length=1)]
+    new_password: Annotated[str, Field(min_length=6)]  # same rule as registration
+
+
 class UserLoginRequest(BaseModel):
     phone: str
     password: str
