@@ -6,13 +6,14 @@ decides what actually happens. Manual entries and AI-scanned entries both go
 through create_entry(), so they behave identically.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.config import OVERDUE_AFTER_DAYS
 from app.models.models import Customer, LedgerEntry, OcrScan, PaymentStatus, ScanStatus
 from app.schemas.schemas import CustomerResponse
 
@@ -46,15 +47,35 @@ def _unpaid_total():
     )
 
 
+def _oldest_unpaid_date():
+    """SQL expression: transaction_date of the oldest udhaar entry (NULL if nothing is owed)."""
+    return func.min(LedgerEntry.transaction_date).filter(LedgerEntry.payment_status == PaymentStatus.udhaar)
+
+
+def _dues_columns():
+    """
+    The three calculated customer columns, for use in a query grouped by customer:
+      total_dues         → sum of unpaid amounts
+      oldest_unpaid_date → date of the oldest unpaid entry
+      is_overdue         → that date is more than OVERDUE_AFTER_DAYS ago
+    All done in SQL, so dues and the overdue flag are never stored and can't go stale.
+    """
+    cutoff = date.today() - timedelta(days=OVERDUE_AFTER_DAYS)
+    oldest = _oldest_unpaid_date()
+    # oldest < cutoff is NULL when nothing is owed; coalesce turns that into False
+    is_overdue = func.coalesce(oldest < cutoff, False)
+    return _unpaid_total().label("total_dues"), oldest.label("oldest_unpaid_date"), is_overdue.label("is_overdue")
+
+
 def list_customers_with_dues(db: Session, user_id: UUID, only_owing: bool = False) -> list[CustomerResponse]:
     """
     Every customer with their outstanding dues, calculated in one query:
     customers LEFT JOIN their entries, summing the unpaid amounts.
     only_owing=True → just customers who owe money, highest dues first.
     """
-    dues = _unpaid_total().label("total_dues")
+    dues, oldest, is_overdue = _dues_columns()
     query = (
-        db.query(Customer, dues)
+        db.query(Customer, dues, oldest, is_overdue)
         .outerjoin(LedgerEntry, LedgerEntry.customer_id == Customer.id)
         .filter(Customer.user_id == user_id)
         .group_by(Customer.id)
@@ -64,20 +85,33 @@ def list_customers_with_dues(db: Session, user_id: UUID, only_owing: bool = Fals
     else:
         query = query.order_by(Customer.name)
 
-    return [to_customer_response(customer, total) for customer, total in query.all()]
+    return [to_customer_response(customer, *calculated) for customer, *calculated in query.all()]
 
 
 def get_customer_dues(db: Session, customer_id: UUID) -> float:
     return db.query(_unpaid_total()).filter(LedgerEntry.customer_id == customer_id).scalar()
 
 
-def to_customer_response(customer: Customer, total_dues: float) -> CustomerResponse:
+def get_customer_response(db: Session, customer: Customer) -> CustomerResponse:
+    """One customer with the same calculated columns as the list."""
+    calculated = db.query(*_dues_columns()).filter(LedgerEntry.customer_id == customer.id).one()
+    return to_customer_response(customer, *calculated)
+
+
+def to_customer_response(
+    customer: Customer,
+    total_dues: float,
+    oldest_unpaid_date: Optional[date] = None,
+    is_overdue: bool = False,
+) -> CustomerResponse:
     return CustomerResponse(
         id=customer.id,
         name=customer.name,
         phone=customer.phone,
         notes=customer.notes,
         total_dues=float(total_dues),
+        oldest_unpaid_date=oldest_unpaid_date,
+        is_overdue=bool(is_overdue),
         created_at=customer.created_at,
     )
 

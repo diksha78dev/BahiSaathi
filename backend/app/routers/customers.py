@@ -2,7 +2,7 @@
 BahiSaathi — Customer routes
 
   POST   /customers/      → add a customer
-  GET    /customers/      → list customers (with their dues)
+  GET    /customers/      → list customers (with their dues and overdue flag)
   GET    /customers/{id}  → one customer
   PATCH  /customers/{id}  → update name / phone / notes
   DELETE /customers/{id}  → delete (only when they owe nothing)
@@ -64,7 +64,7 @@ def list_customers(db: Session = Depends(get_db), current_user: User = Depends(g
 @router.get("/{customer_id}", response_model=CustomerResponse)
 def get_customer(customer_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     customer = get_own_customer(db, customer_id, current_user)
-    return ledger_service.to_customer_response(customer, ledger_service.get_customer_dues(db, customer.id))
+    return ledger_service.get_customer_response(db, customer)
 
 
 @router.patch("/{customer_id}", response_model=CustomerResponse)
@@ -85,7 +85,7 @@ def update_customer(
 
     db.commit()
     db.refresh(customer)
-    return ledger_service.to_customer_response(customer, ledger_service.get_customer_dues(db, customer.id))
+    return ledger_service.get_customer_response(db, customer)
 
 
 @router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)

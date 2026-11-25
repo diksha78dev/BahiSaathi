@@ -86,6 +86,8 @@ class CustomerResponse(BaseModel):
     phone: Optional[str]
     notes: Optional[str]
     total_dues: float  # calculated: sum of this customer's unpaid entries
+    oldest_unpaid_date: Optional[date] = None  # calculated: date of their oldest unpaid entry
+    is_overdue: bool = False                   # calculated: oldest unpaid entry > OVERDUE_AFTER_DAYS old
     created_at: datetime
 
 

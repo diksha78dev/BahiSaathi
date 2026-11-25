@@ -1,12 +1,17 @@
-/** Left navigation + logged-in shop. Customers/Reports/Settings pages arrive in Module 7. */
+/**
+ * Left navigation + logged-in shop.
+ * Each item links to a route; NavLink marks the one matching the URL as active.
+ * Set `ready: true` when a page is built — until then it shows "Soon" and can't be clicked.
+ */
 import { FileText, LayoutDashboard, LogOut, Settings, Users } from "lucide-react";
+import { NavLink } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 
 const NAV_ITEMS = [
-  { label: "Dashboard", icon: LayoutDashboard, ready: true },
-  { label: "Customers", icon: Users, ready: false },
-  { label: "Reports", icon: FileText, ready: false },
-  { label: "Settings", icon: Settings, ready: false },
+  { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard, ready: true },
+  { label: "Customers", path: "/customers", icon: Users, ready: true },
+  { label: "Reports", path: "/reports", icon: FileText, ready: false },
+  { label: "Settings", path: "/settings", icon: Settings, ready: false },
 ];
 
 export default function Sidebar() {
@@ -20,18 +25,21 @@ export default function Sidebar() {
       </div>
 
       <nav className="nav-links">
-        {NAV_ITEMS.map(({ label, icon: Icon, ready }) => (
-          <button
-            key={label}
-            className={`nav-item ${label === "Dashboard" ? "active" : ""}`}
-            disabled={!ready}
-            title={ready ? label : `${label} — coming soon`}
-          >
-            <Icon size={20} />
-            {label}
-            {!ready && <span className="soon-badge">Soon</span>}
-          </button>
-        ))}
+        {NAV_ITEMS.map(({ label, path, icon: Icon, ready }) =>
+          ready ? (
+            // NavLink adds "active" for /customers and also /customers/123
+            <NavLink key={label} to={path} className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
+              <Icon size={20} />
+              {label}
+            </NavLink>
+          ) : (
+            <button key={label} className="nav-item" disabled title={`${label} — coming soon`}>
+              <Icon size={20} />
+              {label}
+              <span className="soon-badge">Soon</span>
+            </button>
+          )
+        )}
       </nav>
 
       <div className="user-profile">

@@ -1,7 +1,7 @@
 """
 BahiSaathi — Ledger entry routes
 
-  GET    /entries/                       → list entries (newest first)
+  GET    /entries/                       → list entries (newest first; filter by status / customer)
   POST   /entries/manual                 → add an entry by typing it
   POST   /entries/upload-scan            → upload a bahi photo → AI returns a DRAFT to review
   GET    /entries/scan/{scan_id}         → status (and draft) of a scan
@@ -17,7 +17,7 @@ import uuid
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import MAX_UPLOAD_MB, UPLOAD_DIR
@@ -60,8 +60,9 @@ def get_scan_awaiting_review(db: Session, scan_id: UUID, user: User) -> OcrScan:
 @router.get("/", response_model=list[LedgerEntryResponse])
 def list_entries(
     payment_status: Optional[PaymentStatus] = None,  # ?payment_status=udhaar
+    customer_id: Optional[UUID] = None,              # ?customer_id=... → one customer's ledger
     skip: int = 0,
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -72,6 +73,8 @@ def list_entries(
     )
     if payment_status:
         query = query.filter(LedgerEntry.payment_status == payment_status)
+    if customer_id:
+        query = query.filter(LedgerEntry.customer_id == customer_id)
     return query.order_by(LedgerEntry.created_at.desc()).offset(skip).limit(limit).all()
 
 

@@ -1,11 +1,21 @@
-/** Recent ledger entries. Props: entries from GET /entries/, onMarkPaid(entryId) */
+/**
+ * A list of ledger entries with "Mark Paid" on unpaid ones.
+ * Props: entries from GET /entries/, isLoading, onMarkPaid(entryId),
+ *        title and emptyText (optional — the Customers page reuses this list).
+ */
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, CheckCircle2, Inbox } from "lucide-react";
 import { useState } from "react";
 import { getErrorMessage } from "../api/client";
 import { formatDate, formatQuantity, formatRupees } from "../utils/format";
 
-export default function EntriesList({ entries, isLoading, onMarkPaid }) {
+export default function EntriesList({
+  entries,
+  isLoading,
+  onMarkPaid,
+  title = "Recent Entries",
+  emptyText = "No entries yet. Add one manually or upload a scan!",
+}) {
   const [payingId, setPayingId] = useState(null);
   const [error, setError] = useState("");
 
@@ -24,7 +34,7 @@ export default function EntriesList({ entries, isLoading, onMarkPaid }) {
   return (
     <div className="glass-card">
       <div className="header-flex">
-        <h3>Recent Entries</h3>
+        <h3>{title}</h3>
         <div className="text-secondary" style={{ fontSize: 13 }}>{entries.length} records</div>
       </div>
 
@@ -35,7 +45,7 @@ export default function EntriesList({ entries, isLoading, onMarkPaid }) {
       ) : entries.length === 0 ? (
         <div className="text-secondary text-center" style={{ padding: "40px 20px" }}>
           <Inbox size={48} opacity={0.2} />
-          <p style={{ margin: "12px 0 0" }}>No entries yet. Add one manually or upload a scan!</p>
+          <p style={{ margin: "12px 0 0" }}>{emptyText}</p>
         </div>
       ) : (
         <div className="list-container">

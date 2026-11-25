@@ -1,5 +1,5 @@
 /**
- * Dashboard page — owns the data and the actions; the components only display.
+ * Dashboard page (inside AppLayout) — owns the data and the actions; the components only display.
  *
  *   useDashboardData() ──► stats, entries, dues, customers ──► components (props)
  *   component action (add / confirm scan / mark paid) ──► API call ──► reload()
@@ -14,11 +14,9 @@ import DuesList from "../components/DuesList";
 import EntriesList from "../components/EntriesList";
 import ManualEntryForm from "../components/ManualEntryForm";
 import ScanReview from "../components/ScanReview";
-import Sidebar from "../components/Sidebar";
 import StatCards from "../components/StatCards";
 import UploadZone from "../components/UploadZone";
 import { useDashboardData } from "../hooks/useDashboardData";
-import "../styles/dashboard.css";
 
 const fadeIn = (delay) => ({
   initial: { opacity: 0, y: 16 },
@@ -64,50 +62,43 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="dark-dashboard">
-      <div className="bg-orb bg-orb-1"></div>
-      <div className="bg-orb bg-orb-2"></div>
+    <>
+      <motion.header {...fadeIn(0)} style={{ marginBottom: 8 }}>
+        <h1>Overview</h1>
+        <p className="text-secondary">Track udhaar, payments and dues across your shop.</p>
+      </motion.header>
 
-      <Sidebar />
+      {error && (
+        <div className="glass-card" style={{ color: "var(--danger)" }}>
+          {error}{" "}
+          <button className="glass-btn small" onClick={reload}>Retry</button>
+        </div>
+      )}
 
-      <main className="main-content">
-        <motion.header {...fadeIn(0)} style={{ marginBottom: 8 }}>
-          <h1>Overview</h1>
-          <p className="text-secondary">Track udhaar, payments and dues across your shop.</p>
-        </motion.header>
+      <motion.div {...fadeIn(0.15)}>
+        <StatCards stats={stats} isLoading={isLoading} />
+      </motion.div>
 
-        {error && (
-          <div className="glass-card" style={{ color: "var(--danger)" }}>
-            {error}{" "}
-            <button className="glass-btn small" onClick={reload}>Retry</button>
-          </div>
-        )}
+      {draftScan && (
+        <ScanReview
+          key={draftScan.id}
+          scan={draftScan}
+          customers={customers}
+          onConfirm={handleConfirmScan}
+          onDiscard={handleDiscardScan}
+        />
+      )}
 
-        <motion.div {...fadeIn(0.15)}>
-          <StatCards stats={stats} isLoading={isLoading} />
-        </motion.div>
-
-        {draftScan && (
-          <ScanReview
-            key={draftScan.id}
-            scan={draftScan}
-            customers={customers}
-            onConfirm={handleConfirmScan}
-            onDiscard={handleDiscardScan}
-          />
-        )}
-
-        <motion.div className="content-grid" {...fadeIn(0.3)}>
-          <div className="panel-col">
-            <UploadZone onUpload={handleUpload} />
-            <ManualEntryForm customers={customers} onSubmit={handleAddEntry} />
-          </div>
-          <div className="panel-col">
-            <EntriesList entries={entries} isLoading={isLoading} onMarkPaid={handleMarkPaid} />
-            <DuesList dues={dues} isLoading={isLoading} />
-          </div>
-        </motion.div>
-      </main>
-    </div>
+      <motion.div className="content-grid" {...fadeIn(0.3)}>
+        <div className="panel-col">
+          <UploadZone onUpload={handleUpload} />
+          <ManualEntryForm customers={customers} onSubmit={handleAddEntry} />
+        </div>
+        <div className="panel-col">
+          <EntriesList entries={entries} isLoading={isLoading} onMarkPaid={handleMarkPaid} />
+          <DuesList dues={dues} isLoading={isLoading} />
+        </div>
+      </motion.div>
+    </>
   );
 }

@@ -53,3 +53,8 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 # ── Uploads ─────────────────────────────────────────────────────
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", 5))
+
+# ── Ledger rules ────────────────────────────────────────────────
+# A customer is "overdue" when their oldest unpaid (udhaar) entry is older than
+# this many days. Kirana credit is usually settled monthly, hence 30.
+OVERDUE_AFTER_DAYS = int(os.getenv("OVERDUE_AFTER_DAYS", 30))

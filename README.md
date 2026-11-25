@@ -29,7 +29,8 @@ what (udhaar), understanding sales, and month-end totals all happen by hand.
 - [x] Module 4 — Gemini AI extractor
 - [x] Module 5 — React + auth UI
 - [x] Module 6 — Dashboard UI
-- [ ] Module 7 — Customers & Reports pages
+- [x] Module 7a — App navigation + Customers page
+- [ ] Module 7b — Reports & Settings pages
 - [ ] Module 8 — Deploy
 
 ---
@@ -63,10 +64,26 @@ pages/ + components/   ── uses ──►  api/*.js  ──HTTP + JWT──�
 | `api/` | `client.js` (Axios + token + error messages) and one small file per backend router |
 | `context/` + `hooks/useAuth` | Who is logged in; login / register / logout |
 | `hooks/useDashboardData` | Loads stats, entries, dues, customers in parallel; `reload()` refreshes all |
-| `pages/` | Screens. `Dashboard` owns data + actions and passes them down as props |
-| `components/` | Presentational pieces (stat cards, lists, form, upload, scan review) |
-| `utils/format.js` | ₹ / date / quantity formatting |
+| `hooks/useCustomers` | `useCustomers()` (the list) and `useCustomerDetail(id)` (one customer + their entries) |
+| `components/AppLayout` | Sidebar + background + `<Outlet />`: the frame every logged-in page renders inside |
+| `pages/` | Screens. Each page owns its data + actions and passes them down as props |
+| `components/` | Presentational pieces (stat cards, lists, forms, upload, scan review) |
+| `utils/format.js` | ₹ / date / quantity formatting, days since a date |
 | `utils/entryForm.js` | Form strings ⇄ API entry, shared by the manual form and the scan review |
+
+### Frontend routes
+| Path | Page | Notes |
+|------|------|-------|
+| `/login`, `/register` | `Login`, `Register` | Public |
+| `/dashboard` | `Dashboard` | Stats, scan upload + review, manual entry, recent entries, dues |
+| `/customers` | `Customers` | All customers with dues; search, sort, add |
+| `/customers/:customerId` | `CustomerDetail` | One customer's ledger; edit, delete, mark paid |
+| `/reports`, `/settings` | `ComingSoon` | Placeholders until their pages are built (sidebar shows "Soon") |
+
+Every logged-in route is nested under one `<ProtectedRoute><AppLayout /></ProtectedRoute>` in `App.jsx`, so the login
+check and the sidebar are written once. The sidebar uses `NavLink`, so the active item comes from the URL
+(`/customers/123` keeps "Customers" highlighted). Refreshing any route works: Vite in development and
+`vercel.json` in production serve `index.html` for every path and React Router picks the page.
 
 ### Request flows
 
@@ -99,7 +116,19 @@ Why review first: in real-photo tests Gemini read clear pages 7/7 correctly, but
 the wrong customer, and re-scanning a page silently doubled the dues. A wrong ledger costs the shopkeeper real money,
 so a human confirms before anything is saved.
 
+**Customers**
+1. `/customers` → `GET /customers/` returns every customer with three **calculated** fields, all from one SQL query
+   (`ledger_service.list_customers_with_dues`): `total_dues` (sum of udhaar), `oldest_unpaid_date`, and
+   `is_overdue` (oldest unpaid entry older than `OVERDUE_AFTER_DAYS`, default 30). Search and sort run in the browser,
+   since the whole list is already loaded.
+2. Clicking a customer opens `/customers/:id` → `GET /customers/{id}` + `GET /entries/?customer_id={id}` (their ledger).
+3. Mark paid → `PATCH /entries/{id}/mark-paid` → reload: dues and the overdue flag recalculate on their own.
+4. Delete → `DELETE /customers/{id}`; the backend refuses while dues > 0 and the page shows its message. Their old
+   (paid) entries stay in the ledger as walk-in sales, so monthly reports don't change.
+
 ### Design decisions worth knowing
+- **Overdue is calculated too.** `is_overdue` compares the oldest unpaid entry's date with today in SQL, so paying
+  that entry clears the flag immediately. The threshold is a setting (`OVERDUE_AFTER_DAYS`), not a hardcoded 30.
 - **Dues are calculated, never stored.** A customer's dues = `SUM(amount)` of their `udhaar` entries, done in SQL.
   There's no running total to keep in sync, so marking paid or deleting an entry can't leave dues wrong.
 - **Reports group by `transaction_date`** (the date written in the bahi), which defaults to today.
@@ -118,7 +147,7 @@ Interactive docs with "Try it out": http://localhost:8000/docs (click **Authoriz
 | POST | `/auth/register` | Create a shop account |
 | POST | `/auth/login` | Get a JWT |
 | GET | `/auth/me` | Current user |
-| GET | `/entries/?payment_status=udhaar` | List entries (newest first) |
+| GET | `/entries/?payment_status=udhaar&customer_id=…&limit=50` | List entries (newest first); all filters optional, `limit` ≤ 500 |
 | POST | `/entries/manual` | Add an entry |
 | POST | `/entries/upload-scan` | Upload a bahi photo → AI draft to review (nothing saved yet) |
 | GET | `/entries/scan/{id}` | Scan status and draft |
@@ -126,7 +155,7 @@ Interactive docs with "Try it out": http://localhost:8000/docs (click **Authoriz
 | POST | `/entries/scan/{id}/discard` | Throw the draft away |
 | PATCH | `/entries/{id}/mark-paid` | Mark an udhaar entry paid |
 | DELETE | `/entries/{id}` | Delete an entry |
-| GET/POST | `/customers/` | List (with dues) / create customers |
+| GET/POST | `/customers/` | List (with `total_dues`, `oldest_unpaid_date`, `is_overdue`) / create customers |
 | GET/PATCH/DELETE | `/customers/{id}` | One customer (delete only if no dues) |
 | GET | `/reports/dashboard` | Home-screen stats |
 | GET | `/reports/dues` | Customers who owe money |

@@ -1,7 +1,8 @@
 /** Ledger entry endpoints — see backend/app/routers/entries.py */
 import apiClient from "./client";
 
-export const getEntries = () => apiClient.get("/entries/").then((res) => res.data);
+/** Newest first. filters (optional): { customer_id, payment_status, limit } */
+export const getEntries = (filters = {}) => apiClient.get("/entries/", { params: filters }).then((res) => res.data);
 
 /** entry: { customer_name?, item_name, quantity?, unit?, amount, payment_status } */
 export const addManualEntry = (entry) => apiClient.post("/entries/manual", entry).then((res) => res.data);
